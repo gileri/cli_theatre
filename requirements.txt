@@ -1,0 +1,4 @@
+guessit>=0.9
+imdbpie>=1.5.5
+fuzzysearch>=0.2.2
+pony>=0.6
