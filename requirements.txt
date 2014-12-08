@@ -1,4 +1,5 @@
 guessit>=0.9
-imdbpie>=1.5.5
+#imdbpie>=1.5.5
 fuzzysearch>=0.2.2
+pyxdg>=0.25
 pony>=0.6

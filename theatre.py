@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+PROGRAM_NAME="cli_theatre"
+
 #import npyscreen
 
 # debug stuff
@@ -7,9 +9,8 @@ from pprint import pprint
 
 import os
 import sys
-import queue
-import threading
-from queue import Queue
+from xdg import BaseDirectory
+import configparser
 import logging
 import time
 import guessit
@@ -30,7 +31,7 @@ db = Database('sqlite', 'test_db.sqlite', create_db=True)
 
 class LibraryItem(db.Entity):
     root = Required(str)
-    path = Required(str)
+    fileName = Required(str)
     type = Optional(str)
     series = Optional(str)
     season = Optional(int)
@@ -47,11 +48,12 @@ class LibraryItem(db.Entity):
             }
             new_cols = {}
             for p in properties.get(data['type'], []):
-                logger.debug('Set %s as %s on %s', p, info[p], obj.path)
+                logger.debug('Set %s as %s on %s', p, info[p], obj.fileName)
                 new_cols[p] = info[p]
             obj.set(**new_cols)
-        info = guessit.guess_file_info(self.path)
-        merge_info(info, self)
+        info = guessit.guess_file_info(self.fileName)
+        with db_session:
+            merge_info(info, self)
 
 
     def __str__(self):
@@ -59,7 +61,7 @@ class LibraryItem(db.Entity):
 
     def __repr__(self):
         if not hasattr(self, 'info') :
-            return self.path
+            return self.fileName
         if self.info['type'] in ('movie', 'moviesubtitle'):
             return self.info['title']
         elif self.info['type'] in ('episode', 'episodesubtitle'):
@@ -79,35 +81,37 @@ class Library():
         return f.lower().endswith(extension_media) or f.lower().endswith(extension_subs)
 
     def scan_collection(self):
-        q = Queue()
-        self.fs_thread = threading.Thread(target=self._scan_fs, args=(q,))
-        self.fs_thread.start()
-        for i in range(max_threads - 1):
-            threading.Thread(target=self._analyze, args=(q,)).start()
-        q.join()
+        self._find_obsolete()
+        self._scan_fs()
+        self._analyze(LibraryItem.select())
     
-    def _analyze(self, q):
-        while self.fs_thread.is_alive():
+    @db_session
+    def _analyze(self, items):
+        for item in items:
             try:
-                item = q.get(block=True, timeout=0.5)
                 item.guess_info()
-                logger.debug("Added %s", item)
-                q.task_done()
-            except queue.Empty:
-                pass
+                logger.info("Analyzed %s", item)
             except Exception as e:
-                logger.exception("Analyzing meta-data")
+                logger.exception("Error while analyzing meta-data")
 
-    def _scan_fs(self, q):
+    @db_session
+    def _find_obsolete(self):
+        for i in LibraryItem.select():
+            if os.path.isfile(os.path.join(i.root, i.fileName)):
+                continue
+            logger.info("Removed %s ", i.fileName)
+            i.delete()
+
+    def _scan_fs(self):
         for root, dirs, files in os.walk(self.path, followlinks=True):
             with db_session:
                 for f in files:
                     if not self.is_media(f):
                         continue
-                    if len(select( p for p in LibraryItem if p.path == f)) == 0:
+                    if len(select( p for p in LibraryItem if p.fileName == f)) == 0:
                         # Item doesn't exist in DB yet, add it
-                        i = LibraryItem(root=root, path=f)
-                        q.put(item=i)
+                        i = LibraryItem(root=root, fileName=f)
+                        logger.debug("Added %s", i)
 
     @db_session
     def find(name=None, season=None, episode=None):
@@ -115,13 +119,16 @@ class Library():
             pprint(i)
 
 if __name__ == '__main__':
-    # TODO configure this via external file
     l_path='/mnt/series'
+    config = configparser.ConfigParser()
+    config_path = BaseDirectory.load_first_config(PROGRAM_NAME)
+    if config_path == None:
+        logger.error("Configuration not defined")
+        sys.exit(1)
+    config.read(os.path.join(config_path, 'config'))
+    l_path = config['library']['path']
     l = Library(l_path, db)
     if sys.argv[1] == 'scan':
-        scan_thread = threading.Thread(target=l.scan_collection)
-        scan_thread.start()
-
-        scan_thread.join()
+        l.scan_collection()
     elif sys.argv[1] == 'find':
         l.find()
