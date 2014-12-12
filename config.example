@@ -1,0 +1,3 @@
+[library]
+path=/home/series
+db=/home/user/db.sqlite
