@@ -39,6 +39,8 @@ class LibraryItem(db.Entity):
     @db_session
     def guess_info(self):
         def merge_info(data, obj):
+            if data['type'] == 'unknown':
+                return
             properties = {
                 'episode': ['season', 'series', 'episodeNumber'],
                 'episodesubtitle': ['season', 'series', 'episodeNumber'],
@@ -47,8 +49,9 @@ class LibraryItem(db.Entity):
             }
             new_cols = {}
             for p in properties.get(data['type'], []):
-                logger.debug('Set %s as %s on %s', p, info[p], obj.fileName)
-                new_cols[p] = info[p]
+                logger.debug('Set %s as %s on %s', p, data[p], obj)
+                new_cols[p] = data[p]
+            obj.type=data['type']
             obj.set(**new_cols)
         info = guessit.guess_file_info(self.fileName)
         with db_session:
@@ -59,14 +62,12 @@ class LibraryItem(db.Entity):
         return self.__repr__()
 
     def __repr__(self):
-        if not hasattr(self, 'info') :
-            return self.fileName
-        if self.info['type'] in ('movie', 'moviesubtitle'):
-            return self.info['title']
-        elif self.info['type'] in ('episode', 'episodesubtitle'):
-            return self.info['series'] + ' S' + str(self.info['season']).zfill(2) + 'E' + str(self.info['episodeNumber']).zfill(2)
+        if self.type in ('movie', 'moviesubtitle'):
+            return self.title if hasattr(self, 'title') else 'Movie %s' % self.fileName
+        elif self.type in ('episode', 'episodesubtitle'):
+            return '%s %s S%02dE%02d' % (self.type, self.series, self.season, self.episodeNumber)
         else:
-            return Object.__repr__()
+            return "LibraryItem %s" % self.fileName
 
 db.generate_mapping(create_tables=True)
 
@@ -79,7 +80,7 @@ class Library():
     def is_media(self, f):
         return f.lower().endswith(extension_media) or f.lower().endswith(extension_subs)
 
-    def scan_collection(self):
+    def scan(self, args):
         self._find_obsolete()
         self._scan_fs()
         self._analyze(LibraryItem.select())
@@ -109,14 +110,20 @@ class Library():
                     if not self.is_media(f):
                         logger.debug("File %s is not media", f)
                         continue
-                    if len(select(p for p in LibraryItem if p.fileName == f)) == 0:
-                        # Item doesn't exist in DB yet, add it
+                    if not exists(p for p in LibraryItem if p.fileName == f):
                         i = LibraryItem(root=root, fileName=f)
                         logger.info("Found %s", i)
 
     @db_session
-    def find(name=None, season=None, episode=None):
-        for i in select(li for li in LibraryItem):
+    def find(self, args):
+        q = select(li for li in LibraryItem)
+        if args.title:
+            q = q.filter(lambda l: args.title.lower() in l.series.lower())
+        if args.season:
+            q = q.filter(lambda l: l.season == args.season)
+        if args.episode:
+            q = q.filter(lambda l: l.episodeNumber == args.episode)
+        for i in q:
             print(i)
 
 if __name__ == '__main__':
@@ -124,7 +131,7 @@ if __name__ == '__main__':
 
     commands = {
         'find': l.find,
-        'scan': l.scan_collection,
+        'scan': l.scan,
     }
     parser = argparse.ArgumentParser(description='Manage a media library')
     parser.add_argument('command', choices=commands.keys())
@@ -162,4 +169,4 @@ if __name__ == '__main__':
         sys.exit(1)
     logger.info('Library path : %s', l.path)
 
-    commands[args.command]()
+    commands[args.command](args)
