@@ -1,12 +1,11 @@
-#!/usr/bin/env python3
-
 from pony.orm import *
 import logging
 import os
 import guessit
+from subliminal import (Video, Episode, Movie, scan_video, download_best_subtitles, save_subtitles)
+from babelfish import Language
 
 logger = logging.getLogger(__name__)
-logger.addHandler(logging.StreamHandler())
 
 extension_subs = tuple(e.lower() for e in  ("sub", "srt"))
 extension_media = tuple(e.lower() for e in ("mkv", "avi"))
@@ -67,7 +66,17 @@ class Library():
 
     @db_session
     def find_series(self):
-        q = select(li.series for li in LibraryItem)
+        q = select(li.series for li in LibraryItem).order_by(1)
+        return q[:]
+
+    @db_session
+    def find_seasons(self, series):
+        q = select(li.season for li in LibraryItem if li.series == series).order_by(lambda s: s)
+        return q[:]
+
+    @db_session
+    def find_episodes(self, series, season):
+        q = select(li for li in LibraryItem if li.series == series and li.season == season and li.type == 'episode').order_by(lambda li: li.episodeNumber)
         return q[:]
 
     @db_session
@@ -77,7 +86,7 @@ class Library():
                 and li.series == item.series
                 and li.season == item.season
                 and li.episodeNumber == item.episodeNumber)
-        # TODO Aloow user to choose a subtitle if multiple are found
+        # TODO Allow user to choose a subtitle if multiple are found
         return q.first()
 
 class LibraryItem(_db.Entity):
@@ -109,6 +118,10 @@ class LibraryItem(_db.Entity):
         with db_session:
             merge_info(info, self)
 
+    def download_sub(self):
+        v = scan_video(self.path)
+        sub = download_best_subtitles((v,), {Language('eng')})
+
     @property
     def path(self):
         return os.path.join(self.root, self.fileName)
@@ -120,6 +133,6 @@ class LibraryItem(_db.Entity):
         if self.type in ('movie', 'moviesubtitle'):
             return self.title if hasattr(self, 'title') else 'Movie %s' % self.fileName
         elif self.type in ('episode', 'episodesubtitle'):
-            return "{0.type} {0.series} S{0.season:02d}E{0.episodeNumber:02d} {0.fileName}".format(self)
+            return "{0.type} {0.series} S{0.season:02d}E{0.episodeNumber:02d}({0.fileName})".format(self)
         else:
             return "LibraryItem %s" % self.fileName

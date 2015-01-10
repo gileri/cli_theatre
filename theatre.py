@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
 
-PROGRAM_NAME="cli_theatre"
-
-import logging
-logger = logging.getLogger(__name__)
-logger.addHandler(logging.StreamHandler())
-
 from theatre.library import *
+from theatre.gui import Gui
+from theatre import __title__
+logger = logging.getLogger("theatre")
 
 import os
 import sys
 import click
-import curses
 import subprocess
 from xdg import BaseDirectory
 import configparser
@@ -20,19 +16,23 @@ import configparser
 @click.option('-v', '--verbose',
               help="Verbosity level",
               default='warning')
+@click.option('--log',
+              help="Where to write log output",
+              type=click.File(mode='w'),
+              default=sys.stderr)
 @click.option('-c', '--config',
               help="Path to a config file",
               type=click.Path(exists=True, dir_okay=False),
-              default=os.path.join(BaseDirectory.load_first_config(PROGRAM_NAME), 'config'))
+              default=os.path.join(BaseDirectory.load_first_config(__title__), 'config'))
 @click.option('-d', '--db',
               help="Path to the sqlite database file",
               type=click.Path(dir_okay=False, writable=True),
-              default=os.path.join(BaseDirectory.load_first_config(PROGRAM_NAME), 'db.sqlite'))
+              default=os.path.join(BaseDirectory.load_first_config(__title__), 'db.sqlite'))
 # TODO allow multiple library paths
 @click.option('--library',
               help="Path to the media library",
               type=click.Path(exists=True, file_okay=False))
-def cli(config, db, library, verbose):
+def cli(config, db, library, verbose, log):
     """Manage a media library"""
     global l,_config
 
@@ -47,6 +47,7 @@ def cli(config, db, library, verbose):
         logger.error('Wrong log level : %s', verbose)
         verbose = 'warning'
     logger.setLevel(log_levels[verbose])
+    logger.addHandler(logging.StreamHandler(log))
 
     if not config:
         # TODO explain
@@ -137,17 +138,10 @@ def play(title, season, episode, language):
         pass
     subprocess.call(['mpv', '--sub-file=%s' % (sub.path,), media[choice].path ])
 
-def _gui(stdscr):
-    curses.noecho()
-    curses.cbreak()
-    stdscr.keypad(True)
-    stdscr.clear()
-
 @cli.command()
 def gui():
-    #curses.wrapper(_gui)
-    for s in l.find_series():
-        print(s)
+    g = Gui(l, _config)
+    g.start()
 
 if __name__ == '__main__':
     cli()

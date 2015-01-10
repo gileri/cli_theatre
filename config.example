@@ -1,4 +1,4 @@
 [library]
-path=/mnt/series
-db=/home/user/db.sqlite
+path=/mnt/series/
+db=/tmp/db.sqlite
 sub_language=en
