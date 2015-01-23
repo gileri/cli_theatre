@@ -12,6 +12,7 @@ import subprocess
 from xdg import BaseDirectory
 import configparser
 
+
 @click.group()
 @click.option('-v', '--verbose',
               help="Verbosity level",
@@ -34,14 +35,14 @@ import configparser
               type=click.Path(exists=True, file_okay=False))
 def cli(config, db, library, verbose, log):
     """Manage a media library"""
-    global l,_config
+    global l, _config
 
     log_levels = {
-        'debug':logging.DEBUG,
-        'info':logging.INFO,
-        'warning':logging.WARNING,
-        'error':logging.ERROR,
-        'critical':logging.CRITICAL,
+        'debug': logging.DEBUG,
+        'info': logging.INFO,
+        'warning': logging.WARNING,
+        'error': logging.ERROR,
+        'critical': logging.CRITICAL,
     }
     if verbose not in log_levels:
         logger.error('Wrong log level : %s', verbose)
@@ -66,6 +67,9 @@ def cli(config, db, library, verbose, log):
     logger.info('DB path : %s', db_path)
     bind_db(db_path)
 
+    if len(_config['library']['sub_language']) == 2:
+        pass  # Should try to convert with babelfish
+
     l = Library()
     if library:
         l.path = library
@@ -76,11 +80,13 @@ def cli(config, db, library, verbose, log):
         sys.exit(1)
     logger.info('Library path : %s', l.path)
 
+
 @cli.command()
 def scan():
-    l._find_obsolete()
-    l._scan_fs()
-    l._analyze(LibraryItem.select())
+    l.find_obsolete()
+    l.scan_fs()
+    l.analyze(LibraryItem.select())
+
 
 @cli.command()
 @click.option('-t', '--title',
@@ -88,42 +94,48 @@ def scan():
               prompt=True)
 @click.option('-s', '--season',
               help="Season",
-              prompt=True,
               type=int)
 @click.option('-e', '--episode',
               help="Episode",
-              prompt=True,
               type=int)
 def find(title, season, episode):
-    for i in l._find(title, season, episode):
+    if not episode:
+        try:
+            season = int(click.prompt('Season [any]', type=str, default=''))
+        except ValueError:
+            season = None
+    if not episode:
+        try:
+            episode = int(click.prompt('Episode [any]', type=str, default=''))
+        except ValueError:
+            episode = None
+    for i in l.find(title, season, episode):
         print(i)
+
 
 @cli.command()
 @click.option('-t', '--title',
               prompt=True,
               help="Title of the series")
-
 @click.option('-s', '--season',
               prompt=True,
               help="Season",
               type=click.INT)
-
 @click.option('-e', '--episode',
               prompt=True,
               help="Episode",
               type=click.INT)
-
 @click.option('-l', '--language',
               help="Language of subtitles wanted")
 def play(title, season, episode, language):
     """Play a media file"""
-    media = l._find(title=title, season=season, episode=episode)
+    media = l.find(title=title, season=season, episode=episode)
     if len(media) == 0:
         logger.warn("No media found")
         sys.exit(0)
     if len(media) > 1:
         print('Multiple episode found, please choose one :')
-        for i,m in enumerate(media):
+        for i, m in enumerate(media):
             print('%d. %s' % (i, m))
         choice = click.prompt('Your choice :', type=int)
     else:
@@ -136,7 +148,8 @@ def play(title, season, episode, language):
     sub = l.find_sub(media[choice], language)
     if not sub:
         pass
-    subprocess.call(['mpv', '--sub-file=%s' % (sub.path,), media[choice].path ])
+    subprocess.call(['mpv', '--sub-file=%s' % (sub.path,), media[choice].path])
+
 
 @cli.command()
 def gui():

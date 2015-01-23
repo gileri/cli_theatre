@@ -7,8 +7,6 @@ logger = logging.getLogger("theatre.gui")
 import curses
 import subprocess
 
-import wdb
-wdb.set_trace()
 
 class Gui():
     def __init__(self, l, config):
@@ -42,13 +40,12 @@ class Gui():
             self.screen.addstr(n, 2, str(i) if i else "<empty>", self.h_s if n+self.y_viewport == pos else self.n_s)
 
     def play(self):
-        if 'sub_language' in self.config['library']:
-            language = self.config['library']['sub_language']
-        else:
-            language='en'
+        language = self.config['library']['sub_language']
         sub = self.l.find_sub(self.sel_episode, language)
         if not sub:
-            pass
+            path = self.sel_episode.download_sub(language)
+            sub = self.l.scan_file(path)
+            self.l.analyze([sub])
         logger.info('Playing %s with sub %s', self.sel_episode.path, sub.path)
         self.reset_screen()
         subprocess.call(['mpv', '--sub-file=%s' % (sub.path,), self.sel_episode.path])
@@ -62,7 +59,7 @@ class Gui():
         curses.curs_set(0)
         self.screen.keypad(True)
         self.screen.clear()
-        curses.init_pair(1,curses.COLOR_BLACK, curses.COLOR_WHITE)
+        curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_WHITE)
 
     def reset_screen(self):
         curses.nocbreak()
@@ -96,7 +93,7 @@ class Gui():
                     self.play()
                 else:
                     self.menu_level = min(self.menu_level + 1, 2)
-            elif x in (8, 127) or x == curses.KEY_LEFT: # backspace
+            elif x in (8, 127) or x == curses.KEY_LEFT:  # backspace
                 pos = saved_pos
                 self.menu_level = max(self.menu_level - 1, 0)
             items = self.get_items()

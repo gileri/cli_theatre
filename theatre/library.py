@@ -3,18 +3,21 @@ import logging
 import os
 import guessit
 from subliminal import (Video, Episode, Movie, scan_video, download_best_subtitles, save_subtitles)
+from subliminal.subtitle import get_subtitle_path
 from babelfish import Language
 
 logger = logging.getLogger(__name__)
 
-extension_subs = tuple(e.lower() for e in  ("sub", "srt"))
+extension_subs = tuple(e.lower() for e in ("sub", "srt"))
 extension_media = tuple(e.lower() for e in ("mkv", "avi"))
 
 _db = Database()
 
+
 def bind_db(db_path):
     _db.bind('sqlite', db_path, create_db=True)
     _db.generate_mapping(create_tables=True)
+
 
 class Library():
     def __init__(self, path=None):
@@ -22,9 +25,9 @@ class Library():
 
     def is_media(self, f):
         return f.lower().endswith(extension_media) or f.lower().endswith(extension_subs)
-    
+
     @db_session
-    def _analyze(self, items):
+    def analyze(self, items):
         for item in items:
             try:
                 item.guess_info()
@@ -33,27 +36,42 @@ class Library():
                 logger.exception("Error while analyzing meta-data")
 
     @db_session
-    def _find_obsolete(self):
+    def find_obsolete(self):
         for i in LibraryItem.select():
             if os.path.isfile(os.path.join(i.root, i.fileName)):
                 continue
             logger.info("Removed %s ", i.fileName)
             i.delete()
 
-    def _scan_fs(self):
+    def scan_fs(self, path=None):
+        if path is None:
+            path = self.path
+
+        if os.path.isfile(path):
+            self.scan_file(path)
+            return
+
         logger.debug("Starting FS scan in %s", self.path)
         for root, dirs, files in os.walk(self.path, followlinks=True):
             with db_session:
                 for f in files:
-                    if not self.is_media(f):
-                        logger.debug("File %s is not media", f)
-                        continue
-                    if not exists(p for p in LibraryItem if p.fileName == f):
-                        i = LibraryItem(root=root, fileName=f)
-                        logger.info("Found %s", i)
+                    self.scan_file(f, root)
+
+    def scan_file(self, f, root=None):
+        if root is None:
+            root, f = os.path.split(f)
+        if not self.is_media(f):
+            logger.debug("File %s is not media", f)
+            return None
+        with db_session:
+            i = get(p for p in LibraryItem if p.fileName == f)
+            if not i:
+                i = LibraryItem(root=root, fileName=f)
+                logger.info("Found %s", i)
+            return i
 
     @db_session
-    def _find(self, title=None, season=None, episode=None):
+    def find(self, title=None, season=None, episode=None):
         q = select(li for li in LibraryItem if li.type == 'episode')
         if title:
             q = q.filter(lambda i: title.lower() in i.series.lower())
@@ -76,18 +94,21 @@ class Library():
 
     @db_session
     def find_episodes(self, series, season):
-        q = select(li for li in LibraryItem if li.series == series and li.season == season and li.type == 'episode').order_by(lambda li: li.episodeNumber)
+        q = select(
+            li for li in LibraryItem if li.series == series and li.season == season and li.type == 'episode').order_by(
+            lambda li: li.episodeNumber)
         return q[:]
 
     @db_session
     def find_sub(self, item, language):
-        q = select(li for li in LibraryItem 
-                if  li.type == 'episodesubtitle'
-                and li.series == item.series
-                and li.season == item.season
-                and li.episodeNumber == item.episodeNumber)
+        q = select(li for li in LibraryItem
+                   if li.type == 'episodesubtitle'
+                   and li.series == item.series
+                   and li.season == item.season
+                   and li.episodeNumber == item.episodeNumber)
         # TODO Allow user to choose a subtitle if multiple are found
         return q.first()
+
 
 class LibraryItem(_db.Entity):
     root = Required(str)
@@ -112,15 +133,21 @@ class LibraryItem(_db.Entity):
             for p in properties.get(data['type'], []):
                 logger.debug('Set %s as %s on %s', p, data[p], obj)
                 new_cols[p] = data[p]
-            obj.type=data['type']
+            obj.type = data['type']
             obj.set(**new_cols)
+
         info = guessit.guess_file_info(self.fileName)
         with db_session:
             merge_info(info, self)
 
-    def download_sub(self):
+    def download_sub(self, language):
+        l = Language(language)
         v = scan_video(self.path)
-        sub = download_best_subtitles((v,), {Language('eng')})
+        sub_path = get_subtitle_path(v.name, l)
+        if not os.path.isfile(sub_path):
+            sub = download_best_subtitles((v,), {l})
+            save_subtitles(sub)
+        return sub_path
 
     @property
     def path(self):
