@@ -1,4 +1,7 @@
 [library]
+# Path where media files are stored 
 path=/mnt/series/
+# Path where the database file will be stored
 db=/tmp/db.sqlite
-sub_language=en
+# Language on three letters (see ISO-639-3)
+sub_language=eng
