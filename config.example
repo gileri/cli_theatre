@@ -1,3 +1,6 @@
+# cli_theatre configuration file
+# On GNU/Linux, usually stored in ~/.config/cli_theatre/config
+
 [library]
 # Path where media files are stored 
 path=/mnt/series/
