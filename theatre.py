@@ -23,19 +23,17 @@ import configparser
               default=sys.stderr)
 @click.option('-c', '--config',
               help="Path to a config file",
-              type=click.Path(exists=True, dir_okay=False),
-              default=os.path.join(BaseDirectory.load_first_config(__title__), 'config'))
+              type=click.Path(exists=True, dir_okay=False))
 @click.option('-d', '--db',
               help="Path to the sqlite database file",
-              type=click.Path(dir_okay=False, writable=True),
-              default=os.path.join(BaseDirectory.load_first_config(__title__), 'db.sqlite'))
+              type=click.Path(dir_okay=False, writable=True))
 # TODO allow multiple library paths
 @click.option('--library',
               help="Path to the media library",
               type=click.Path(exists=True, file_okay=False))
 def cli(config, db, library, verbose, log):
     """Manage a media library"""
-    global l, _config
+    global l, lib_config
 
     log_levels = {
         'debug': logging.DEBUG,
@@ -50,35 +48,45 @@ def cli(config, db, library, verbose, log):
     logger.setLevel(log_levels[verbose])
     logger.addHandler(logging.StreamHandler(log))
 
+    basedir = BaseDirectory.load_first_config(__title__)
     if not config:
-        # TODO explain
-        logger.warn("Configuration not found")
+        if basedir:
+            config = os.path.join(basedir, 'config')
+        else:
+            logger.warn("Configuration file not found.")
     logger.info('Config path: %s', config)
-    _config = configparser.ConfigParser()
-    _config.read(config)
-
-    if db:
-        db_path = str(db)
-    elif 'db' in _config['library']:
-        db_path = _config['library']['db']
+    if config:
+        _config = configparser.ConfigParser()
+        _config.read(config)
+        lib_config = _config['library'] if 'library' in _config else {}
     else:
-        logger.critical("SQLite database file not defined")
-        sys.exit(1)
+        lib_config = {}
+    if db:
+        # DB passed as parameter
+        db_path = str(db)
+    elif 'db' in lib_config:
+        # DB set in config file
+        db_path = lib_config['db']
+    else:
+        working_dir = os.path.join(BaseDirectory.xdg_config_home, __title__)
+        if not os.path.isdir(working_dir):
+            os.makedirs(working_dir, exist_ok=True)
+        db_path = os.path.join(working_dir, 'db.sqlite')
     logger.info('DB path : %s', db_path)
     bind_db(db_path)
 
-    if len(_config['library']['sub_language']) == 2:
+    if 'sub_language' in lib_config and len(lib_config['sub_language']) == 2:
         pass  # Should try to convert with babelfish
 
-    l = Library()
     if library:
-        l.path = library
-    elif 'path' in _config['library']:
-        l.path = _config['library']['path']
+        library_path = library
+    elif 'path' in lib_config:
+        library_path = lib_config['path']
     else:
         logger.critical("Media library path not defined")
         sys.exit(1)
-    logger.info('Library path : %s', l.path)
+    l = Library(library_path)
+    logger.info('Library path : %s', library_path)
 
 
 @cli.command()
@@ -141,8 +149,8 @@ def play(title, season, episode, language):
     else:
         choice = 0
     if not language:
-        if 'sub_language' in _config['library']:
-            language = _config['library']['sub_language']
+        if 'sub_language' in lib_config['library']:
+            language = lib_config['library']['sub_language']
         else:
             language = click.prompt("Subtitle language :")
     sub = l.find_sub(media[choice], language)
@@ -153,7 +161,7 @@ def play(title, season, episode, language):
 
 @cli.command()
 def gui():
-    g = Gui(l, _config)
+    g = Gui(l, lib_config)
     g.start()
 
 if __name__ == '__main__':

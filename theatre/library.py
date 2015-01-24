@@ -146,6 +146,7 @@ class LibraryItem(_db.Entity):
         sub_path = get_subtitle_path(v.name, l)
         if not os.path.isfile(sub_path):
             sub = download_best_subtitles((v,), {l})
+            # TODO Save in tmp folder if regular is not available
             save_subtitles(sub)
         return sub_path
 

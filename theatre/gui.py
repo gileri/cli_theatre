@@ -40,7 +40,7 @@ class Gui():
             self.screen.addstr(n, 2, str(i) if i else "<empty>", self.h_s if n+self.y_viewport == pos else self.n_s)
 
     def play(self):
-        language = self.config['library']['sub_language']
+        language = self.config['sub_language']
         sub = self.l.find_sub(self.sel_episode, language)
         if not sub:
             path = self.sel_episode.download_sub(language)
@@ -77,13 +77,13 @@ class Gui():
         self.draw_menu(items, pos)
         while x != ord('q'):
             x = stdscr.getch()
-            if x == curses.KEY_DOWN:
+            if x == curses.KEY_DOWN and len(items) > 0:
                 pos = (pos + 1) % len(items)
-            elif x == curses.KEY_NPAGE:
+            elif x == curses.KEY_NPAGE and len(items) > 0:
                 pos = (pos + self.y_viewport) % len(items)
-            elif x == curses.KEY_UP:
+            elif x == curses.KEY_UP and len(items) > 0:
                 pos = (pos - 1) % len(items)
-            elif x == curses.KEY_PPAGE:
+            elif x == curses.KEY_PPAGE and len(items) > 0:
                 pos = (pos - self.y_viewport) % len(items)
             elif x == ord('\n') or x == curses.KEY_RIGHT:
                 self.save_chosen(items[pos])
