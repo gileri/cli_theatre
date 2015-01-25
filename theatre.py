@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 
-from theatre.library import *
+from theatre.library import Library, LibraryItem, bind_db
 from theatre.gui import Gui
 from theatre import __title__
+import logging
 logger = logging.getLogger("theatre")
+
+from babelfish import LanguageReverseError
+from babelfish import Language
 
 import os
 import sys
@@ -76,7 +80,11 @@ def cli(config, db, library, verbose, log):
     bind_db(db_path)
 
     if 'sub_language' in lib_config and len(lib_config['sub_language']) == 2:
-        pass  # Should try to convert with babelfish
+        try:
+            lib_config['sub_language'] = Language.fromalpha2(lib_config['sub_language']).alpha3
+        except LanguageReverseError:
+            logger.error('Invalid subtitle language %s', lib_config['sub_language'])
+            del(lib_config['sub_language'])
 
     if library:
         library_path = library
