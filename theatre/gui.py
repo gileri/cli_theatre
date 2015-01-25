@@ -32,12 +32,14 @@ class Gui():
         levels = ["sel_series", "sel_season", "sel_episode"]
         setattr(self, levels[self.menu_level], item)
 
-    def draw_menu(self, items, pos):
+    def draw_menu(self, items, pos, title=""):
         win_y, win_x = self.screen.getmaxyx()
+        win_y -=1 # Substract title from vertical size
         self.y_viewport = max(pos - win_y+1, min(self.y_viewport, pos))
         self.screen.clear()
+        self.screen.addstr(0, 0, title)
         for n, i in enumerate(items[self.y_viewport:self.y_viewport+win_y]):
-            self.screen.addstr(n, 2, str(i) if i else "<empty>", self.h_s if n+self.y_viewport == pos else self.n_s)
+            self.screen.addstr(n+1, 2, str(i) if i else "<empty>", self.h_s if n+self.y_viewport == pos else self.n_s)
 
     def play(self):
         language = self.config['sub_language']
@@ -74,7 +76,8 @@ class Gui():
         pos = 0
         saved_pos = 0
         items = self.get_items()
-        self.draw_menu(items, pos)
+        titles=["Series", "Seasons", "Episodes"]
+        self.draw_menu(items, pos, titles[self.menu_level])
         while x != ord('q'):
             x = stdscr.getch()
             if x == curses.KEY_DOWN and len(items) > 0:
@@ -97,7 +100,7 @@ class Gui():
                 pos = saved_pos
                 self.menu_level = max(self.menu_level - 1, 0)
             items = self.get_items()
-            self.draw_menu(items, pos)
+            self.draw_menu(items, pos, titles[self.menu_level])
         exit()
 
     def start(self):
