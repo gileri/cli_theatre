@@ -2,7 +2,7 @@ from pony.orm import *
 import logging
 import os
 import guessit
-from subliminal import (Video, Episode, Movie, scan_video, download_best_subtitles, save_subtitles)
+from subliminal import Video, Episode, Movie, scan_video, download_best_subtitles,save_subtitles
 from subliminal.subtitle import get_subtitle_path
 from babelfish import Language
 
