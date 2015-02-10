@@ -26,7 +26,6 @@ class Library():
     def is_media(self, f):
         return f.lower().endswith(extension_media) or f.lower().endswith(extension_subs)
 
-    @db_session
     def analyze(self, items):
         for item in items:
             try:
@@ -43,32 +42,49 @@ class Library():
             logger.info("Removed %s ", i.fileName)
             i.delete()
 
-    def scan_fs(self, path=None):
+    def scan_fs(self, path=None, callback=None):
         if path is None:
             path = self.path
 
         if os.path.isfile(path):
-            self.scan_file(path)
-            return
+            yield self.scan_file(path)
+        
+        if not os.path.isdir(path):
+            yield None
 
         logger.debug("Starting FS scan in %s", self.path)
         for root, dirs, files in os.walk(self.path, followlinks=True):
-            with db_session:
-                for f in files:
-                    self.scan_file(f, root)
+            for f in files:
+                yield self.scan_file(f, root)
+        if callable(callback):
+            callback()
 
+    @db_session
     def scan_file(self, f, root=None):
         if root is None:
             root, f = os.path.split(f)
         if not self.is_media(f):
             logger.debug("File %s is not media", f)
             return None
-        with db_session:
-            i = get(p for p in LibraryItem if p.fileName == f)
-            if not i:
-                i = LibraryItem(root=root, fileName=f)
-                logger.info("Found %s", i)
-            return i
+        i = get(p for p in LibraryItem if p.fileName == f)
+        new = False
+        if not i:
+            i = LibraryItem(root=root, fileName=f)
+            logger.info("Found %s", i)
+            new = True
+        return (i, new)
+
+    @db_session
+    def update(self, callback=None):
+        self.find_obsolete()
+        for i in self.scan_fs():
+            if i is None or not i[1]:
+                continue
+            logger.debug('guessing %s', str(i))
+            i[0].guess_info()
+        if callable(callback):
+            callback()
+
 
     @db_session
     def find(self, title=None, season=None, episode=None):
@@ -118,7 +134,6 @@ class LibraryItem(_db.Entity):
     season = Optional(int)
     episodeNumber = Optional(int)
 
-    @db_session
     def guess_info(self):
         def merge_info(data, obj):
             if data['type'] == 'unknown':
@@ -133,12 +148,12 @@ class LibraryItem(_db.Entity):
             for p in properties.get(data['type'], []):
                 logger.debug('Set %s as %s on %s', p, data[p], obj)
                 new_cols[p] = data[p]
-            obj.type = data['type']
-            obj.set(**new_cols)
+            with db_session:
+                obj.type = data['type']
+                obj.set(**new_cols)
 
         info = guessit.guess_file_info(self.fileName)
-        with db_session:
-            merge_info(info, self)
+        merge_info(info, self)
 
     def download_sub(self, language):
         l = Language(language)

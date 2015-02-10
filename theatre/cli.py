@@ -99,9 +99,7 @@ def cli(config, db, library, verbose, log):
 
 @cli.command()
 def scan():
-    l.find_obsolete()
-    l.scan_fs()
-    l.analyze(LibraryItem.select())
+    l.update()
 
 
 @cli.command()

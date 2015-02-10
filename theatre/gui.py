@@ -18,6 +18,8 @@ class Gui():
         self.sel_season = None
         self.sel_episode = None
         self.y_viewport = 0
+        self.pos = 0
+        self.titles = ["Series", "Seasons", "Episodes"]
 
     def get_items(self):
         """ Return items by menu depth (series > season > episodes) """
@@ -46,7 +48,7 @@ class Gui():
         sub = self.l.find_sub(self.sel_episode, language)
         if not sub:
             path = self.sel_episode.download_sub(language)
-            sub = self.l.scan_file(path)
+            sub = self.l.scan_file(path)[0]
             self.l.analyze([sub])
         logger.info('Playing %s with sub %s', self.sel_episode.path, sub.path)
         self.reset_screen()
@@ -68,39 +70,42 @@ class Gui():
         self.screen.keypad(False)
         curses.echo()
         curses.endwin()
+    def refresh_screen(self):
+        self.items = self.get_items()
+        self.draw_menu(self.items, self.pos, self.titles[self.menu_level])
 
     def gui(self, stdscr):
         self.screen = stdscr
         self.init_screen()
         x = None
-        pos = 0
         saved_pos = 0
-        items = self.get_items()
-        titles=["Series", "Seasons", "Episodes"]
-        self.draw_menu(items, pos, titles[self.menu_level])
+        self.refresh_screen()
         while x != ord('q'):
             x = stdscr.getch()
-            if x == curses.KEY_DOWN and len(items) > 0:
-                pos = (pos + 1) % len(items)
-            elif x == curses.KEY_NPAGE and len(items) > 0:
-                pos = (pos + self.y_viewport) % len(items)
-            elif x == curses.KEY_UP and len(items) > 0:
-                pos = (pos - 1) % len(items)
-            elif x == curses.KEY_PPAGE and len(items) > 0:
-                pos = (pos - self.y_viewport) % len(items)
+            if x == curses.KEY_DOWN and len(self.items) > 0:
+                self.pos = (self.pos + 1) % len(self.items)
+            elif x == curses.KEY_NPAGE and len(self.items) > 0:
+                self.pos = (self.pos + self.y_viewport) % len(self.items)
+            elif x == curses.KEY_UP and len(self.items) > 0:
+                self.pos = (self.pos - 1) % len(self.items)
+            elif x == curses.KEY_PPAGE and len(self.items) > 0:
+                self.pos = (self.pos - self.y_viewport) % len(self.items)
+            elif x == ord('u'):
+                logger.debug('Updating database from TUI')
+                self.l.update(callback=self.refresh_screen)
+                logger.debug('Finished updating')
             elif x == ord('\n') or x == curses.KEY_RIGHT:
-                self.save_chosen(items[pos])
-                saved_pos = pos
-                pos = 0
+                self.save_chosen(self.items[self.pos])
+                saved_pos = self.pos
+                self.pos = 0
                 if self.menu_level >= 2:
                     self.play()
                 else:
                     self.menu_level = min(self.menu_level + 1, 2)
             elif x in (8, 127) or x == curses.KEY_LEFT:  # backspace
-                pos = saved_pos
+                self.pos = saved_pos
                 self.menu_level = max(self.menu_level - 1, 0)
-            items = self.get_items()
-            self.draw_menu(items, pos, titles[self.menu_level])
+            self.refresh_screen()
         exit()
 
     def start(self):
